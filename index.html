@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<!-- Load d3.js -->
+<script src="https://d3js.org/d3.v6.js"></script>
+
+<style>
+* {
+    font-family: GreekFallback,Raleway,Helvetica Neue,Helvetica,Arial,sans-serif;
+}
+.plot-title {
+    font-family: Merriweather,Baskerville,Libre Baskerville,Georgia,serif;
+}
+</style>
+
+<!-- Create a div where the graph will take place -->
+<h1>EA Funding</h1>
+<div id="my_dataviz"></div>
+
+<script>
+// https://d3-graph-gallery.com/graph/connectedscatter_multi.html
+
+// set the dimensions and margins of the graph
+const margin = {top: 40, right: 240, bottom: 30, left: 50},
+    width = 700 - margin.left - margin.right,
+    height = 400 - margin.top - margin.bottom;
+
+// append the svg object to the body of the page
+const svg = d3.select("#my_dataviz")
+  .append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform",`translate(${margin.left},${margin.top})`);
+
+
+function lineplot(data) {
+}
+
+//Read the data
+d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vTPVzHXIbYR4FKCGZjkwKeVhEO8bS6E-_XqhrjYJdOO9aHCegtTLM7dLKRlcAJe_Gx85Kk599L6x26L/pub?gid=868931334&single=true&output=csv").then(function(data) {
+
+    delete(data.columns);
+    data.map(x => {
+        x.Cause = x.Year;
+        x['2022'] = x['2022(est)'];
+        delete(x.Year);
+        delete(x['2022(est)']);
+    })
+    const orgs = [...new Set(data.map(x => x.Org))];
+    const causes = [...new Set(data.map(x => x.Cause))];
+    const years = Object.keys(data[0])
+        .map(x => parseInt(x))
+        .filter(x => x)
+        .sort((a, b) => a - b);
+
+    // parse the quantities
+    const parseAmount = x => parseFloat(x.slice(1,x.length-1))*1e6;
+    data.forEach(x => {
+        years.forEach(year => {
+            x[year] = parseAmount(x[year]);
+        })
+    })
+
+    console.table(data);
+
+    const causeNames = {
+        GH: 'Global Health & Development',
+        LTXR: 'Longtermism & X-Risk',
+        Meta: 'Movement Building',
+        AW: 'Animal Welfare',
+    }
+
+    const cause2data = {}
+    causes.forEach(cause => 
+        cause2data[cause] = data.filter(x => x.Cause===cause)
+    );
+    /*
+    const dataReady = causes.map(cause => {
+        const causeObj = {
+            name: causeNames[cause],
+            values: years.map(year => { 
+                return {
+                    time: year,
+                    value: cause2data[cause].reduce((sum, x) => sum+x[year], 0)
+                }
+            }),
+        }
+        causeObj.total = causeObj.values.reduce((sum, x) => sum+x.value, 0)
+        return causeObj;
+    })
+
+    // List of groups (here I have one group per column)
+    const allGroup = causes;
+    */
+
+    const orgNames = {
+        FTX: 'FTX Future Fund',
+        SFF: 'S&F Fund',
+        ACE: 'Animal Charity Evaluator',
+        EAF: 'EA Funds',
+        GW: 'Give Well',
+        OPP: 'Open Philanthropy',
+    }
+
+    const org2data = {}
+    orgs.forEach(org => 
+        org2data[org] = data.filter(x => x.Org===org)
+    );
+    const dataReady = orgs.map(org => {
+
+        const orgObj = {
+            name: orgNames[org],
+            values: years.map(year => { 
+                return {
+                    time: year,
+                    value: org2data[org].reduce((sum, x) => sum+x[year], 0)
+                }
+            }),
+        }
+
+        // remove zero years
+        orgObj.values = orgObj.values.filter(x => x.value > 0);
+
+        // compute total
+        orgObj.total = orgObj.values.reduce((sum, x) => sum+x.value, 0)
+        return orgObj;
+    })
+
+    // List of groups (here I have one group per column)
+    const allGroup = orgs;
+
+    console.log(dataReady);
+
+
+    // A color scale: one color for each group
+    const myColor = d3.scaleOrdinal()
+      .domain(allGroup)
+      .range(d3.schemeSet1);
+
+    // title
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", -15)
+        .attr("text-anchor", "middle")
+        .style("font-size", "1.5em")
+        .classed('plot-title', true)
+        .text("EA Funding by Cause Area");
+
+    // Add X axis --> it is a date format
+    const x = d3.scaleLinear()
+      .domain([2012,2022])
+      .range([ 0, width ]);
+    svg.append("g")
+      .attr("transform", `translate(0, ${height})`)
+      .call(d3.axisBottom(x).tickFormat(d3.format('d')));
+
+    // Add Y axis
+    const y = d3.scaleLinear()
+      //.domain( [0,450*1e6])
+      .domain( [0,350*1e6])
+      .range([ height, 0 ]);
+    svg.append("g")
+      .call(d3.axisLeft(y).tickFormat(d3.formatPrefix('$~d',1e6)));
+
+    // Add the lines
+    const line = d3.line()
+      .x(d => x(+d.time))
+      .y(d => y(+d.value))
+    svg.selectAll("myLines")
+      .data(dataReady)
+      .join("path")
+        .attr("d", d => line(d.values))
+        .attr("stroke", d => myColor(d.name))
+        .style("stroke-width", 4)
+        .style("fill", "none")
+
+    // Add the points
+    svg
+      // First we need to enter in a group
+      .selectAll("myDots")
+      .data(dataReady)
+      .join('g')
+        .style("fill", d => myColor(d.name))
+      // Second we need to enter in the 'values' part of this group
+      .selectAll("myPoints")
+      .data(d => d.values)
+      .join("circle")
+        .attr("cx", d => x(d.time))
+        .attr("cy", d => y(d.value))
+        .attr("r", 5)
+        .attr("stroke", "white")
+
+    // Add a legend at the end of each line
+    svg
+      .selectAll("myLabels")
+      .data(dataReady)
+      .join('g')
+        .append("text")
+          .datum(d => { return {name: d.name, value: d.values[d.values.length - 1]}; }) // keep only the last value of each time series
+          .attr("transform",d => `translate(${x(d.value.time)},${y(d.value.value)})`) // Put the text at the position of the last point
+          .attr("x", 12) // shift the text a bit more right
+          .text(d => d.name)
+          .style("fill", d => myColor(d.name))
+          .style("font-size", 13)
+
+    // Add a total to each line
+    console.log(dataReady);
+    const formatter = Intl.NumberFormat('en', {notation: 'compact'});
+    svg
+      .selectAll("myLabels")
+      .data(dataReady)
+      .join('g')
+        .append("text")
+          .datum(d => { return {name: d.name, value: d.values[d.values.length - 1], total: formatter.format(d.total)}; }) // keep only the last value of each time series
+          .attr("transform",d => `translate(${x(d.value.time)},${y(d.value.value)})`) // Put the text at the position of the last point
+          .attr("x", 12) // shift the text a bit more right
+          .attr("y", 15) // shift the text a bit more right
+          .text(d => `\$${d.total} total`)
+          .style("fill", d => myColor(d.name))
+          .style("font-size", 18)
+
+})
+</script>
