@@ -14,13 +14,13 @@
 </style>
 
 <!-- Create a div where the graph will take place -->
-<h1>EA Funding</h1>
-<div style="display: flex; flex-direction: row;">
-<div id="org-plot"></div>
-<div id="cause-plot"></div>
-</div>
+<div id="main"></div>
 
 <script>
+
+const format = Intl.NumberFormat('en', {notation: 'compact'}).format;
+const billionDollarFormat = (x) => d3.formatPrefix('$.2~d',1e9)(x).replace(/G/, 'B')
+
 // https://d3-graph-gallery.com/graph/connectedscatter_multi.html
 
 // set the dimensions and margins of the graph
@@ -55,6 +55,9 @@ d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vTPVzHXIbYR4FKCGZjkwKeVh
 
     console.table(data);
 
+
+    // Cause area line plot
+
     const causeNames = {
         GH: 'Global Health & Development',
         LTXR: 'Longtermism & X-Risk',
@@ -62,27 +65,51 @@ d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vTPVzHXIbYR4FKCGZjkwKeVh
         AW: 'Animal Welfare',
     }
 
+    // Org color
+    const causeColor = d3.scaleOrdinal()
+      .domain(causes)
+      .range(d3.schemeSet2);
+
     const cause2data = {}
     causes.forEach(cause => 
         cause2data[cause] = data.filter(x => x.Cause===cause)
     );
 
+    const causeData = causes.map(cause => {
+        return {
+            name: causeNames[cause],
+            values: years.map(year => { 
+                return {
+                    time: year,
+                    value: cause2data[cause].reduce((sum, x) => sum+x[year], 0),
+                    name: causeNames[cause],
+                }
+            }),
+        }
+    })
+    causeData.forEach(x => { x.total = x.values.reduce((sum, x) => sum+x.value, 0) })
+
+    const colors = d3.scaleOrdinal()
+      .domain([...orgs,...causes])
+      .range(d3.schemeSet2);
+    const colors2 = (x) => x==='Total' ? '#c3c3c3' : colors(x);
+
     linePlot(
-        divId = '#cause-plot',
-        dataReady = causes.map(cause => {
-            return {
-                name: causeNames[cause],
-                values: years.map(year => { 
-                    return {
-                        time: year,
-                        value: cause2data[cause].reduce((sum, x) => sum+x[year], 0)
-                    }
-                }),
-            }
-        }),
+        dataReady = causeData,
         allGroup=causes,
-        title="EA Funding by Cause Area"
+        title="EA Funding by Cause Area",
+        myColor = colors2
     )
+
+    // Cause area bar chart
+
+    barChart(
+        causeData,
+        title="EA Funding by Cause Area",
+        myColor = colors2
+    )
+
+    // Orgs
 
     const orgNames = {
         FTX: 'FTX Future Fund',
@@ -98,33 +125,121 @@ d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vTPVzHXIbYR4FKCGZjkwKeVh
         org2data[org] = data.filter(x => x.Org===org)
     );
 
+    const orgData = orgs.map(org => {
+        return {
+            name: orgNames[org],
+            values: years.map(year => { 
+                return {
+                    time: year,
+                    value: org2data[org].reduce((sum, x) => sum+x[year], 0),
+                    name: orgNames[org],
+                }
+            }),
+        }
+    })
+
+    orgData.forEach(x => { x.total = x.values.reduce((sum, x) => sum+x.value, 0) })
+
+    // Org color
+    const orgColor = d3.scaleOrdinal()
+      .domain(orgs)
+      .range(d3.schemeSet2);
+    orgColor2 = (x) => x==='Total' ? '#c3c3c3' : orgColor(x);
+
+    // Org line plot
+
     linePlot(
-        divId = '#org-plot',
-        dataReady = orgs.map(org => {
-
-            return {
-                name: orgNames[org],
-                values: years.map(year => { 
-                    return {
-                        time: year,
-                        value: org2data[org].reduce((sum, x) => sum+x[year], 0)
-                    }
-                }),
-            }
-
-        }),
-
+        dataReady = orgData,
         allGroup=orgs,
+        title="EA Funding by Orgnization",
+        myColor = colors2
+    )
 
-        title="EA Funding by Orgnization"
+
+    // Org bar chart
+    barChart(
+        orgData,
+        title="EA Funding by Organization",
+        myColor = colors2
     )
 
 })
 
-function linePlot(divId, dataReady, allGroup, title) {
+function barChart(dataReady, title) {
+    // https://d3-graph-gallery.com/graph/barplot_horizontal.html
+
+    // set the dimensions and margins of the graph
+    const barHeight = 40;
+    const margin = {top: 20, right: 50, bottom: 40, left: 200},
+        width = 460 - margin.left - margin.right,
+        height = barHeight * (dataReady.length+1) - margin.top - margin.bottom;
 
     // append the svg object to the body of the page
-    const svg = d3.select(divId)
+    const svg = d3.select("#main")
+        .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+    dataReady.sort((a,b) => -(a.total - b.total));
+
+    dataReady.push({
+        name: "Total",
+        total: dataReady.map(x => x.total).reduce((a,b)=>a+b)
+    })
+
+    const maxX = Math.max(...dataReady.map(x => x.total));
+
+    // Add X axis
+    const x = d3.scaleLinear()
+        .domain([0, maxX])
+        .range([ 0, width])
+    svg.append("g")
+        .attr("transform", `translate(0, ${height})`)
+        .call(d3.axisBottom(x).tickFormat(billionDollarFormat).ticks(8))
+        .selectAll("text")
+        .attr("transform", "translate(-10,0)rotate(-45)")
+        .style("text-anchor", "end");
+
+    // Y axis
+    const y = d3.scaleBand()
+        .range([ 0, height ])
+        .domain(dataReady.map(d => d.name))
+        .padding(.1);
+    svg.append("g")
+        .call(d3.axisLeft(y))
+        .style("font-size", 14)
+
+    //Bars
+    svg.selectAll("myRect")
+        .data(dataReady)
+            .join("rect")
+            .attr("x", x(0) )
+            .attr("y", d => y(d.name))
+            .attr("width", d => x(d.total))
+            .attr("height", y.bandwidth())
+            .attr("fill", "#69b3a2")
+            .style("fill", d => myColor(d.name))
+
+    svg
+      .selectAll("myLabels")
+      .data(dataReady)
+      .join('g')
+        .append("text")
+          .datum(d => { return {name: d.name, label: `\$${format(d.total)}`, labelX: d.total, labelY: d.name}; }) // keep only the last value of each time series
+          .attr("transform",d => `translate(${x(d.labelX)},${y(d.labelY)})`) // Put the text at the position of the last point
+          .attr("x", 10) 
+          .attr("y", barHeight/2-3)
+          .text(d => d.label) 
+          .style("fill", d => myColor(d.name))
+          .style("font-size", 18)
+}
+
+function linePlot(dataReady, allGroup, title, myColor) {
+
+    // append the svg object to the body of the page
+    const svg = d3.select('#main')
       .append("svg")
         .attr("width", width + margin.left + margin.right)
         .attr("height", height + margin.top + margin.bottom)
@@ -158,10 +273,6 @@ function linePlot(divId, dataReady, allGroup, title) {
         x.labelY = Math.max(x.labelY, dataReady[i-1].labelY+minGap);
     })
 
-    // A color scale: one color for each group
-    const myColor = d3.scaleOrdinal()
-      .domain(allGroup)
-      .range(d3.schemeSet2);
 
     // title
     svg.append("text")
@@ -182,11 +293,46 @@ function linePlot(divId, dataReady, allGroup, title) {
 
     // Add Y axis
     const y = d3.scaleLinear()
-      //.domain( [0,450*1e6])
       .domain( [minY,maxY])
       .range([ height, 0 ]);
     svg.append("g")
       .call(d3.axisLeft(y).tickFormat(d3.formatPrefix('$~d',1e6)));
+
+	// Add tooltip
+	const tooltip = d3.select('#main')
+		.append("div")
+		.style("opacity", 0)
+		.attr("class", "tooltip")
+		.style("background-color", "white")
+		.style("border", "solid")
+		.style("border-width", "1px")
+		.style("border-radius", "5px")
+		.style("padding", "10px")
+		.style("position", "fixed")
+
+	const mouseover = function(event, d) {
+        tooltip
+            .style("opacity", 1)
+            .style("color", myColor(d.name))
+            .style("display", "block")
+	}
+
+	const mousemove = function(event, d) {
+        tooltip
+            .html(`${d.time}: \$${format(d.value)}`)
+		    //.style("left", event.x + "px")
+		    //.style("top", event.y + "px")
+		    .style("left", event.screenX - 10 + "px")
+		    .style("top", event.screenY - 130 + "px")
+	}
+
+	const mouseleave = function(event,d) {
+		tooltip
+			.transition()
+			.duration(200)
+			.style("opacity", 0)
+			.style("display", "none")
+	}
 
     // Add the lines
     const line = d3.line()
@@ -216,7 +362,15 @@ function linePlot(divId, dataReady, allGroup, title) {
         .attr("r", 5)
         .attr("stroke", "white")
 
-    const formatter = Intl.NumberFormat('en', {notation: 'compact'});
+		.on("mouseover", mouseover )
+		.on("mousemove", mousemove )
+		.on("mouseleave", mouseleave )
+
+
+
+
+
+    // LABELS
 
     // Add a legend at the end of each line
     svg
@@ -232,19 +386,20 @@ function linePlot(divId, dataReady, allGroup, title) {
           .style("font-size", 13)
 
     // Add a total to each line
-    console.log(dataReady);
     svg
       .selectAll("myLabels")
       .data(dataReady)
       .join('g')
         .append("text")
-          .datum(d => { return {name: d.name, label: `\$${formatter.format(d.labelY)}`, labelX: d.labelX, labelY: d.labelY, total: formatter.format(d.total)}; }) // keep only the last value of each time series
+          .datum(d => { return {name: d.name, label: `\$${format(d.labelY)}`, labelX: d.labelX, labelY: d.labelY, total: format(d.total)}; }) // keep only the last value of each time series
           .attr("transform",d => `translate(${x(d.labelX)},${y(d.labelY)})`) // Put the text at the position of the last point
           .attr("x", 12) // shift the text a bit more right
           .attr("y", 15) // shift the text a bit more right
           .text(d => d.label) // ${d.value.time}
           .style("fill", d => myColor(d.name))
           .style("font-size", 18)
+
+    return myColor;
 
 }
 </script>
