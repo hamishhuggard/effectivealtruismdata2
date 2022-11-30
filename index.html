@@ -15,6 +15,7 @@
 
 <!-- Create a div where the graph will take place -->
 <div id="main"></div>
+<p>Data is pulled from <a href="https://forum.effectivealtruism.org/posts/nGrmemHzQvBpnXkNX/what-matters-to-shrimps-factors-affecting-shrimp-welfare-in#Conclusion"/>this spreadsheet</a> put together by TylerMaule. More information on the data collection process <a href="https://forum.effectivealtruism.org/posts/ZbaDmowkXbTBsxvHn/historical-ea-funding-data">here</a>.</p>
 
 <script>
 
@@ -105,7 +106,7 @@ d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vTPVzHXIbYR4FKCGZjkwKeVh
 
     barChart(
         causeData,
-        title="EA Funding by Cause Area",
+        title="Total Funding 2012-2022",
         myColor = colors2
     )
 
@@ -159,7 +160,7 @@ d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vTPVzHXIbYR4FKCGZjkwKeVh
     // Org bar chart
     barChart(
         orgData,
-        title="EA Funding by Organization",
+        title="Total Funding 2012-2022",
         myColor = colors2
     )
 
@@ -170,7 +171,7 @@ function barChart(dataReady, title) {
 
     // set the dimensions and margins of the graph
     const barHeight = 40;
-    const margin = {top: 20, right: 50, bottom: 40, left: 200},
+    const margin = {top: 40, right: 50, bottom: 40, left: 200},
         width = 460 - margin.left - margin.right,
         height = barHeight * (dataReady.length+1) - margin.top - margin.bottom;
 
@@ -234,6 +235,14 @@ function barChart(dataReady, title) {
           .text(d => d.label) 
           .style("fill", d => myColor(d.name))
           .style("font-size", 18)
+    // title
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", -15)
+        .attr("text-anchor", "middle")
+        .style("font-size", "1.5em")
+        .classed('plot-title', true)
+        .text(title);
 }
 
 function linePlot(dataReady, allGroup, title, myColor) {
